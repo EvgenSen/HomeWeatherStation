@@ -4,11 +4,27 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP280.h>
 #include <DHT.h>
+#include <nRF24L01.h>
+#include <RF24.h>
 
 #define DEBUG 1
 
-OneWire          ds1820(2);  // Подключен к D2
-Adafruit_BMP280  bmp280;     // No input args - подключение по I2C
+#define SEND_COUNT 15
+#define SEND_DELAY 20
+
+// Структура передаваемых данных
+typedef struct
+{
+  float ds1820_temp;
+  float bmp280_temp;
+  float bmp280_pres;
+}
+Message;
+Message msg;
+
+OneWire          ds1820(2);     // Подключен к D2
+Adafruit_BMP280  bmp280;        // No input args - подключение по I2C
+RF24             nrf24(9, 10);  // Пины CE и CSN подключены к D9 и D10
 
 byte ds1820_addr[8];
 byte ds1820_type_s;
@@ -66,6 +82,27 @@ int setup_ds1820(void)
 	return 0;
 }
 
+int setup_nrf24(void)
+{
+	nrf24.begin();             // активировать модуль
+	nrf24.setAutoAck(1);       // режим подтверждения приёма, 1 вкл 0 выкл
+	nrf24.setRetries(0, 15);   // время между попыткой достучаться и число попыток
+	nrf24.enableAckPayload();  // разрешить отсылку данных в ответ на входящий сигнал
+	nrf24.setPayloadSize(32);  // размер пакета, в байтах
+	nrf24.openWritingPipe(0xF0F0F0F0F0);  // открываем канал для передачи данных по адресу 0xF0F0F0F0F0
+	nrf24.setChannel(0x60);           // выбираем канал (в котором нет шумов!)
+	nrf24.setPALevel (RF24_PA_HIGH);  // уровень мощности передатчика. {RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX}
+	nrf24.setDataRate (RF24_1MBPS);   // скорость обмена.              {RF24_2MBPS, RF24_1MBPS, RF24_250KBPS}
+	// Скорость должна быть одинакова на приёмнике и передатчике!
+	// При самой низкой скорости имеем самую высокую чувствительность и дальность, но большее потребление энергии
+
+	nrf24.powerUp();        // начать работу
+	nrf24.stopListening();  // не слушаем радиоэфир, мы передатчик
+
+	//nrf24.printDetails();
+	return 0;
+}
+
 void setup()
 {
 	Serial.begin(9600);
@@ -83,6 +120,8 @@ void setup()
 		while (1);
 	}
 
+	setup_nrf24();
+
 	Serial.println(F("Initialization successful"));
 }
 
@@ -91,7 +130,6 @@ void loop()
 	byte i;
 	byte present = 0;
 	byte data[12];
-	float temp_cels;
 
 	Serial.println("==============================================");
 	// ============== DS1820 ==============
@@ -132,23 +170,36 @@ void loop()
 		else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
 		// default is 12 bit resolution, 750 ms conversion time
 	}
-	temp_cels = (float)raw / 16.0;
+	msg.ds1820_temp = (float)raw / 16.0;
 
 	Serial.print("DS1820: Temperature ");
-	Serial.print(temp_cels);
+	Serial.print(msg.ds1820_temp);
 	Serial.println(" *C ");
 
 	// ============== BMP280 ==============
 
+	msg.bmp280_temp = bmp280.readTemperature();
+	msg.bmp280_pres = bmp280.readPressure();
+
 	Serial.print(F("BMP280: Temperature "));
-	Serial.print(bmp280.readTemperature());
+	Serial.print(msg.bmp280_temp);
 	Serial.print(" *C Pressure ");
 
-	float P = bmp280.readPressure();
-	Serial.print(P);
+	Serial.print(msg.bmp280_pres);
 	Serial.print(" Pa ");
-	Serial.print(P*0.0075006375542,2);
+	Serial.print(msg.bmp280_pres*0.0075006375542,2);
 	Serial.println(" mmHg");
+
+	// ============== SEND DATA ==============
+
+	byte send_num = 0;
+
+	while ( !nrf24.write(&msg, sizeof(msg)) || send_num > SEND_COUNT )
+	{
+		Serial.println("Send error, retrying...");
+		send_num++;
+		delay(SEND_DELAY);
+	}
 
 	delay(3000);
 }
