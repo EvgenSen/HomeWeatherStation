@@ -5,10 +5,12 @@
 // Структура передаваемых данных
 typedef struct
 {
-	float ds1820_temp;
-	float bmp280_temp;
-	float bmp280_pres;
-	float voltage;
+	float ds1820_temp;  // Температура с датчика ds1820
+	float bmp280_temp;  // Температура с датчика bmp280
+	float bmp280_pres;  // Давление с датчика bmp280
+	float voltage;      // Напряжение аккумулятора
+	byte send_count;    // Количество всех попыток отправить данные
+	byte send_err;      // Количество неудачных попыток отправить данные
 }
 Message;
 Message msg;
@@ -48,9 +50,21 @@ void loop()
 	{
 		nrf24.read(&msg, sizeof(msg));         // чиатем входящий сигнал
 
+#if 0 // Для чтения информации из консоли
 		Serial.print("Recieved: ds1820_temp: "); Serial.println(msg.ds1820_temp);
 		Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
 		Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres*0.0075006375542,2);
 		Serial.print("          voltage:     "); Serial.println(msg.voltage);
+		Serial.print("          send_count:  "); Serial.println(msg.send_count);
+		Serial.print("          send_err:    "); Serial.println(msg.send_err);
+		Serial.println("=================================");
+#else // Для переноса информации в exel
+		Serial.print(msg.ds1820_temp); Serial.print(" ");
+		Serial.print(msg.bmp280_temp); Serial.print(" ");
+		Serial.print(msg.bmp280_pres*0.0075006375542,2); Serial.print(" ");
+		Serial.print(msg.voltage); Serial.print(" ");
+		Serial.print(msg.send_count); Serial.print(" ");
+		Serial.print(msg.send_err); Serial.println(" ");
+#endif
 	}
 }

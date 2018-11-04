@@ -7,7 +7,7 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 #define SEND_COUNT 15
 #define SEND_DELAY 20
@@ -15,10 +15,12 @@
 // Структура передаваемых данных
 typedef struct
 {
-	float ds1820_temp;
-	float bmp280_temp;
-	float bmp280_pres;
-	float voltage;
+	float ds1820_temp;  // Температура с датчика ds1820
+	float bmp280_temp;  // Температура с датчика bmp280
+	float bmp280_pres;  // Давление с датчика bmp280
+	float voltage;      // Напряжение аккумулятора
+	byte send_count;    // Количество всех попыток отправить данные
+	byte send_err;      // Количество неудачных попыток отправить данные
 }
 Message;
 Message msg;
@@ -97,7 +99,7 @@ int setup_nrf24(void)
 	// Скорость должна быть одинакова на приёмнике и передатчике!
 	// При самой низкой скорости имеем самую высокую чувствительность и дальность, но большее потребление энергии
 
-	nrf24.powerUp();        // начать работу
+	//nrf24.powerUp();        // начать работу
 	nrf24.stopListening();  // не слушаем радиоэфир, мы передатчик
 
 	//nrf24.printDetails();
@@ -123,6 +125,9 @@ void setup()
 
 	setup_nrf24();
 
+	msg.send_count=0;
+	msg.send_err=0;
+
 	Serial.println(F("Initialization successful"));
 }
 
@@ -131,8 +136,10 @@ void loop()
 	byte i;
 	byte present = 0;
 	byte data[12];
-
+#if DEBUG
 	Serial.println("==============================================");
+#endif
+	nrf24.powerUp();
 	// ============== DS1820 ==============
 	// Wait a few seconds between measurements.
 	delay(3000);
@@ -173,15 +180,18 @@ void loop()
 	}
 	msg.ds1820_temp = (float)raw / 16.0;
 
+#if DEBUG
 	Serial.print("DS1820: Temperature ");
 	Serial.print(msg.ds1820_temp);
 	Serial.println(" *C ");
+#endif
 
 	// ============== BMP280 ==============
 
 	msg.bmp280_temp = bmp280.readTemperature();
 	msg.bmp280_pres = bmp280.readPressure();
 
+#if DEBUG
 	Serial.print(F("BMP280: Temperature "));
 	Serial.print(msg.bmp280_temp);
 	Serial.print(" *C Pressure ");
@@ -190,6 +200,7 @@ void loop()
 	Serial.print(" Pa ");
 	Serial.print(msg.bmp280_pres*0.0075006375542,2);
 	Serial.println(" mmHg");
+#endif
 
 	// ============== Check V ==============
 
@@ -201,12 +212,29 @@ void loop()
 
 	byte send_num = 0;
 
+	msg.send_count++;
+
 	while ( !nrf24.write(&msg, sizeof(msg)) || send_num > SEND_COUNT )
 	{
+#if DEBUG
 		Serial.println("Send error, retrying...");
+#endif
 		send_num++;
 		delay(SEND_DELAY);
 	}
+	if (send_num > SEND_COUNT)
+	{
+		msg.send_err++;
+	}
 
-	delay(3000);
+#if DEBUG
+	Serial.print("Send count: ");
+	Serial.print(msg.send_count);
+	Serial.print(", Send err: ");
+	Serial.println(msg.send_err);
+#endif
+
+	nrf24.powerDown(); // Переходим в режим энергосбережения
+
+	delay(60000);
 }
