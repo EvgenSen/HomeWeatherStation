@@ -8,6 +8,7 @@ typedef struct
 	float ds1820_temp;
 	float bmp280_temp;
 	float bmp280_pres;
+	float voltage;
 }
 Message;
 Message msg;
@@ -50,5 +51,6 @@ void loop()
 		Serial.print("Recieved: ds1820_temp: "); Serial.println(msg.ds1820_temp);
 		Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
 		Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres*0.0075006375542,2);
+		Serial.print("          voltage:     "); Serial.println(msg.voltage);
 	}
 }

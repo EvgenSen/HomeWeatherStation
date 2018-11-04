@@ -15,9 +15,10 @@
 // Структура передаваемых данных
 typedef struct
 {
-  float ds1820_temp;
-  float bmp280_temp;
-  float bmp280_pres;
+	float ds1820_temp;
+	float bmp280_temp;
+	float bmp280_pres;
+	float voltage;
 }
 Message;
 Message msg;
@@ -189,6 +190,12 @@ void loop()
 	Serial.print(" Pa ");
 	Serial.print(msg.bmp280_pres*0.0075006375542,2);
 	Serial.println(" mmHg");
+
+	// ============== Check V ==============
+
+	float Vcc = 5.12; // Примерное напряжение на повышающем модуле
+	int value = analogRead(0); // читаем показания с А0
+	msg.voltage = (value / 1023.0) * Vcc;
 
 	// ============== SEND DATA ==============
 
