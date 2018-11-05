@@ -19,7 +19,7 @@ typedef struct
 	float bmp280_temp;  // Температура с датчика bmp280
 	float bmp280_pres;  // Давление с датчика bmp280
 	float voltage;      // Напряжение аккумулятора
-	byte send_count;    // Количество всех попыток отправить данные
+	unsigned int id;    // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
 	byte send_err;      // Количество неудачных попыток отправить данные
 }
 Message;
@@ -125,7 +125,7 @@ void setup()
 
 	setup_nrf24();
 
-	msg.send_count=0;
+	msg.id=0;
 	msg.send_err=0;
 
 	Serial.println(F("Initialization successful"));
@@ -212,7 +212,7 @@ void loop()
 
 	byte send_num = 0;
 
-	msg.send_count++;
+	msg.id++;
 
 	while ( !nrf24.write(&msg, sizeof(msg)) || send_num > SEND_COUNT )
 	{
@@ -229,7 +229,7 @@ void loop()
 
 #if DEBUG
 	Serial.print("Send count: ");
-	Serial.print(msg.send_count);
+	Serial.print(msg.id);
 	Serial.print(", Send err: ");
 	Serial.println(msg.send_err);
 #endif

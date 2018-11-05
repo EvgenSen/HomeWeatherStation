@@ -2,6 +2,8 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
+#define EXEL_OUTPUT 1
+
 // Структура передаваемых данных
 typedef struct
 {
@@ -9,13 +11,16 @@ typedef struct
 	float bmp280_temp;  // Температура с датчика bmp280
 	float bmp280_pres;  // Давление с датчика bmp280
 	float voltage;      // Напряжение аккумулятора
-	byte send_count;    // Количество всех попыток отправить данные
+	unsigned int id;    // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
 	byte send_err;      // Количество неудачных попыток отправить данные
 }
 Message;
 Message msg;
 
 RF24  nrf24(9, 10);  // Пины CE и CSN подключены к D9 и D10
+
+unsigned int last_msg_id = 0;
+unsigned int duplicate_count = 0;
 
 int setup_nrf24(void)
 {
@@ -42,6 +47,9 @@ void setup()
 {
 	Serial.begin(9600);
 	setup_nrf24();
+#if EXEL_OUTPUT
+	Serial.println("id\tds1820\tbmp280\tbmp280\tvolt\terr\tduplicate");
+#endif
 }
 
 void loop()
@@ -50,21 +58,32 @@ void loop()
 	{
 		nrf24.read(&msg, sizeof(msg));         // чиатем входящий сигнал
 
-#if 0 // Для чтения информации из консоли
-		Serial.print("Recieved: ds1820_temp: "); Serial.println(msg.ds1820_temp);
-		Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
-		Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres*0.0075006375542,2);
-		Serial.print("          voltage:     "); Serial.println(msg.voltage);
-		Serial.print("          send_count:  "); Serial.println(msg.send_count);
-		Serial.print("          send_err:    "); Serial.println(msg.send_err);
-		Serial.println("=================================");
-#else // Для переноса информации в exel
-		Serial.print(msg.ds1820_temp); Serial.print(" ");
-		Serial.print(msg.bmp280_temp); Serial.print(" ");
-		Serial.print(msg.bmp280_pres*0.0075006375542,2); Serial.print(" ");
-		Serial.print(msg.voltage); Serial.print(" ");
-		Serial.print(msg.send_count); Serial.print(" ");
-		Serial.print(msg.send_err); Serial.println(" ");
+		if(last_msg_id < msg.id)
+		{
+			last_msg_id =  msg.id;
+#if EXEL_OUTPUT
+			Serial.print(msg.id); Serial.print("\t");
+			Serial.print(msg.ds1820_temp); Serial.print("\t");
+			Serial.print(msg.bmp280_temp); Serial.print("\t");
+			Serial.print(msg.bmp280_pres*0.0075006375542,2); Serial.print("\t");
+			Serial.print(msg.voltage); Serial.print("\t");
+			Serial.print(msg.send_err); Serial.print("\t");
+			Serial.println(duplicate_count);
+#else
+			Serial.print("Recieved: id:          "); Serial.println(msg.id);
+			Serial.print("          ds1820_temp: "); Serial.println(msg.ds1820_temp);
+			Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
+			Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres*0.0075006375542,2);
+			Serial.print("          voltage:     "); Serial.println(msg.voltage);
+			Serial.print("          send_err:    "); Serial.println(msg.send_err);
+			Serial.print("          duplicate:   "); Serial.println(duplicate_count);
+			Serial.println("=================================");
 #endif
+		}
+		else
+		{
+			duplicate_count++;
+		}
+
 	}
 }
