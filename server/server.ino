@@ -46,6 +46,9 @@ int setup_nrf24(void)
 void setup()
 {
 	Serial.begin(9600);
+	Serial.print(F("Sketch:   " __FILE__ "\n"
+	               "Compiled: " __DATE__ " " __TIME__ "\n"
+	               "Version:  v0.1 (Not release)\n\n"));
 	setup_nrf24();
 #if EXEL_OUTPUT
 	Serial.println("id\tds1820\tbmp280\tbmp280\tvolt\terr\tduplicate");

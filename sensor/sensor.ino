@@ -109,6 +109,9 @@ int setup_nrf24(void)
 void setup()
 {
 	Serial.begin(9600);
+	Serial.print(F("Sketch:   " __FILE__ "\n"
+	               "Compiled: " __DATE__ " " __TIME__ "\n"
+	               "Version:  v0.1 (Not release)\n\n"));
 	Serial.println(F("Start temperature test"));
 
 	// Китайский bmp280 использует нестандартный адрес (0x76)
