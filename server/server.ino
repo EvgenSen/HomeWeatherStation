@@ -11,16 +11,38 @@ typedef struct
 	float bmp280_temp;  // Температура с датчика bmp280
 	float bmp280_pres;  // Давление с датчика bmp280
 	float voltage;      // Напряжение аккумулятора
-	unsigned int id;    // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
-	byte send_err;      // Количество неудачных попыток отправить данные
+	unsigned long id;   // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
+	unsigned int send_err;  // Количество неудачных попыток отправить данные
+	unsigned long uptime;   // Время работы датчика
 }
 Message;
 Message msg;
 
 RF24  nrf24(9, 10);  // Пины CE и CSN подключены к D9 и D10
 
-unsigned int last_msg_id = 0;
+unsigned long last_msg_id = 0;
 unsigned int duplicate_count = 0;
+
+void print_uptime(unsigned long time_millis)
+{
+	unsigned long time=time_millis/1000; // переводим милисекунды в секунды
+	// Считаем и выводим дни
+	Serial.print (time/60/60/24);
+	Serial.print (" days ");
+	// Вычитаем количество целых дней 
+	time-=(time/60/60/24)*60*60*24;
+	// Считаем и выводим часы
+	if (time/60/60<10) { Serial.print ("0"); }
+	Serial.print (time/60/60);
+	Serial.print (":");
+	// Считаем и выводим минуты
+	if (time/60%60<10) { Serial.print ("0"); }
+	Serial.print ((time/60)%60);
+	Serial.print (":");
+	// Считаем и выводим секунды
+	if (time%60<10) { Serial.print ("0"); }
+	Serial.println (time%60);
+}
 
 int setup_nrf24(void)
 {
@@ -42,7 +64,6 @@ int setup_nrf24(void)
 	return 0;
 }
 
-
 void setup()
 {
 	Serial.begin(9600);
@@ -51,7 +72,7 @@ void setup()
 	               "Version:  v0.1 (Not release)\n\n"));
 	setup_nrf24();
 #if EXEL_OUTPUT
-	Serial.println("id\tds1820\tbmp280\tbmp280\tvolt\terr\tduplicate");
+	Serial.println("id\tds1820\tbmp280\tbmp280\tvolt\tuptime\terr\tduplicate");
 #endif
 }
 
@@ -70,6 +91,7 @@ void loop()
 			Serial.print(msg.bmp280_temp); Serial.print("\t");
 			Serial.print(msg.bmp280_pres*0.0075006375542,2); Serial.print("\t");
 			Serial.print(msg.voltage); Serial.print("\t");
+			Serial.print(msg.uptime);  Serial.print("\t");
 			Serial.print(msg.send_err); Serial.print("\t");
 			Serial.println(duplicate_count);
 #else
@@ -78,6 +100,7 @@ void loop()
 			Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
 			Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres*0.0075006375542,2);
 			Serial.print("          voltage:     "); Serial.println(msg.voltage);
+			Serial.print("          uptime:      "); print_uptime(msg.uptime);
 			Serial.print("          send_err:    "); Serial.println(msg.send_err);
 			Serial.print("          duplicate:   "); Serial.println(duplicate_count);
 			Serial.println("=================================");

@@ -19,8 +19,9 @@ typedef struct
 	float bmp280_temp;  // Температура с датчика bmp280
 	float bmp280_pres;  // Давление с датчика bmp280
 	float voltage;      // Напряжение аккумулятора
-	unsigned int id;    // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
-	byte send_err;      // Количество неудачных попыток отправить данные
+	unsigned long id;   // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
+	unsigned int send_err;  // Количество неудачных попыток отправить данные
+	unsigned long uptime;   // Время работы датчика
 }
 Message;
 Message msg;
@@ -212,6 +213,7 @@ void loop()
 	msg.voltage = (value / 1023.0) * Vcc;
 
 	// ============== SEND DATA ==============
+	msg.uptime = millis();
 
 	byte send_num = 0;
 
