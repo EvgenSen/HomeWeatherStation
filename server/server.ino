@@ -1,6 +1,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <iarduino_OLED_txt.h>
 
 #define EXEL_OUTPUT 1
 
@@ -19,6 +20,13 @@ Message;
 Message msg;
 
 RF24  nrf24(9, 10);  // Пины CE и CSN подключены к D9 и D10
+iarduino_OLED_txt oled128x64(0x3C);  // Объявляем объект OLED, указывая адрес дисплея на шине I2C: 0x3C или 0x3D.
+
+// Подключаем шрифты
+// extern uint8_t MediumFont[];
+// extern uint8_t SmallFont[];
+extern uint8_t MediumFontRus[];
+extern uint8_t SmallFontRus[];
 
 unsigned long last_msg_id = 0;
 unsigned int duplicate_count = 0;
@@ -42,6 +50,18 @@ void print_uptime(unsigned long time_millis)
 	// Считаем и выводим секунды
 	if (time%60<10) { Serial.print ("0"); }
 	Serial.println (time%60);
+}
+
+int setup_oled(void)
+{
+	oled128x64.begin();
+	oled128x64.setFont(MediumFontRus);
+	oled128x64.setCoding(TXT_UTF8);
+	oled128x64.print("Weather:", OLED_L, 1);
+	//               "----------"
+	oled128x64.setFont(SmallFontRus);
+
+	return 0;
 }
 
 int setup_nrf24(void)
@@ -71,8 +91,9 @@ void setup()
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
 	               "Version:  v0.1 (Not release)\n\n"));
 	setup_nrf24();
+	setup_oled();
 #if EXEL_OUTPUT
-	Serial.println("id\tds1820\tbmp280\tbmp280\tvolt\tuptime\terr\tduplicate");
+	Serial.println("id\tds1820\tbmp280\tbmp280\tvolt\tuptime\t\terr\tduplicate");
 #endif
 }
 
@@ -85,11 +106,15 @@ void loop()
 		if(last_msg_id < msg.id)
 		{
 			last_msg_id =  msg.id;
+			msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
+			oled128x64.print("ds1820: ", OLED_L, 2);  oled128x64.print(msg.ds1820_temp, OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
+			oled128x64.print("bmp280: ", OLED_L, 3);  oled128x64.print(msg.bmp280_pres, OLED_N, 3, 2);  oled128x64.print(" mmHg", OLED_N, 3);
+			oled128x64.print("volt:   ", OLED_L, 4);  oled128x64.print(msg.voltage,     OLED_N, 4, 2);  oled128x64.print(" v", OLED_N, 4);
 #if EXEL_OUTPUT
 			Serial.print(msg.id); Serial.print("\t");
 			Serial.print(msg.ds1820_temp); Serial.print("\t");
 			Serial.print(msg.bmp280_temp); Serial.print("\t");
-			Serial.print(msg.bmp280_pres*0.0075006375542,2); Serial.print("\t");
+			Serial.print(msg.bmp280_pres); Serial.print("\t");
 			Serial.print(msg.voltage); Serial.print("\t");
 			Serial.print(msg.uptime);  Serial.print("\t");
 			Serial.print(msg.send_err); Serial.print("\t");
@@ -98,7 +123,7 @@ void loop()
 			Serial.print("Recieved: id:          "); Serial.println(msg.id);
 			Serial.print("          ds1820_temp: "); Serial.println(msg.ds1820_temp);
 			Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
-			Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres*0.0075006375542,2);
+			Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres);
 			Serial.print("          voltage:     "); Serial.println(msg.voltage);
 			Serial.print("          uptime:      "); print_uptime(msg.uptime);
 			Serial.print("          send_err:    "); Serial.println(msg.send_err);
