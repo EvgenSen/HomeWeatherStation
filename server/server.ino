@@ -1,6 +1,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <DHT.h>
 #include <iarduino_OLED_txt.h>
 
 #define EXEL_OUTPUT 1
@@ -19,7 +20,8 @@ typedef struct
 Message;
 Message msg;
 
-RF24  nrf24(9, 10);  // Пины CE и CSN подключены к D9 и D10
+RF24 nrf24(9, 10);     // Пины CE и CSN подключены к D9 и D10
+DHT  dht22(4, DHT22);  // DHT22 подключен к D4
 iarduino_OLED_txt oled128x64(0x3C);  // Объявляем объект OLED, указывая адрес дисплея на шине I2C: 0x3C или 0x3D.
 
 // Подключаем шрифты
@@ -30,6 +32,9 @@ extern uint8_t SmallFontRus[];
 
 unsigned long last_msg_id = 0;
 unsigned int duplicate_count = 0;
+
+float dht22_temp;
+float dht22_hum;
 
 void print_uptime(unsigned long time_millis)
 {
@@ -50,6 +55,27 @@ void print_uptime(unsigned long time_millis)
 	// Считаем и выводим секунды
 	if (time%60<10) { Serial.print ("0"); }
 	Serial.println (time%60);
+}
+
+int get_data_dht(void)
+{
+  // Reading temperature or humidity takes about 250 milliseconds!
+  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  dht22_hum  = dht22.readHumidity();
+  // Read temperature as Celsius (the default)
+  dht22_temp = dht22.readTemperature();
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(dht22_hum) || isnan(dht22_temp))
+  {
+    Serial.println("Failed to read from DHT sensor!");
+    return -1;
+  }
+
+  // Compute heat index in Celsius (isFahreheit = false)
+  // float hic = dht.computeHeatIndex(t, h, false);
+
+  return 0;
 }
 
 int setup_oled(void)
@@ -90,10 +116,11 @@ void setup()
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
 	               "Version:  v0.1 (Not release)\n\n"));
+	dht22.begin();
 	setup_nrf24();
 	setup_oled();
 #if EXEL_OUTPUT
-	Serial.println("id\tds1820\tbmp280\tbmp280\tvolt\tuptime\t\terr\tduplicate");
+	Serial.println("id\tds1820\tdht22\tdht22\tbmp280\tbmp280\tvolt\tuptime\t\terr\tduplicate");
 #endif
 }
 
@@ -105,14 +132,19 @@ void loop()
 
 		if(last_msg_id < msg.id)
 		{
+			get_data_dht();
 			last_msg_id =  msg.id;
 			msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
-			oled128x64.print("ds1820: ", OLED_L, 2);  oled128x64.print(msg.ds1820_temp, OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
-			oled128x64.print("bmp280: ", OLED_L, 3);  oled128x64.print(msg.bmp280_pres, OLED_N, 3, 2);  oled128x64.print(" mmHg", OLED_N, 3);
-			oled128x64.print("volt:   ", OLED_L, 4);  oled128x64.print(msg.voltage,     OLED_N, 4, 2);  oled128x64.print(" v", OLED_N, 4);
+			oled128x64.print("dht22:  ", OLED_L, 2);  oled128x64.print(dht22_temp,      OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
+			oled128x64.print("dht22:  ", OLED_L, 3);  oled128x64.print(dht22_hum,       OLED_N, 3, 2);  oled128x64.print(" %",     OLED_N, 3);
+			oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(msg.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
+			oled128x64.print("bmp280: ", OLED_L, 5);  oled128x64.print(msg.bmp280_pres, OLED_N, 5, 2);  oled128x64.print(" mmHg",  OLED_N, 5);
+			oled128x64.print("volt:   ", OLED_L, 6);  oled128x64.print(msg.voltage,     OLED_N, 6, 2);  oled128x64.print(" v",     OLED_N, 6);
 #if EXEL_OUTPUT
 			Serial.print(msg.id); Serial.print("\t");
 			Serial.print(msg.ds1820_temp); Serial.print("\t");
+			Serial.print(dht22_temp); Serial.print("\t");
+			Serial.print(dht22_hum); Serial.print("\t");
 			Serial.print(msg.bmp280_temp); Serial.print("\t");
 			Serial.print(msg.bmp280_pres); Serial.print("\t");
 			Serial.print(msg.voltage); Serial.print("\t");
@@ -122,6 +154,8 @@ void loop()
 #else
 			Serial.print("Recieved: id:          "); Serial.println(msg.id);
 			Serial.print("          ds1820_temp: "); Serial.println(msg.ds1820_temp);
+			Serial.print("          dht22_temp:  "); Serial.println(dht22_temp);
+			Serial.print("          dht22_hum:   "); Serial.println(dht22_hum);
 			Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
 			Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres);
 			Serial.print("          voltage:     "); Serial.println(msg.voltage);
