@@ -33,6 +33,129 @@ RF24             nrf24(9, 10);  // Пины CE и CSN подключены к D9
 byte ds1820_addr[8];
 byte ds1820_type_s;
 
+void get_data_bmp280(void)
+{
+	msg.bmp280_temp = bmp280.readTemperature();
+	msg.bmp280_pres = bmp280.readPressure();
+
+#if DEBUG
+	Serial.print(F("BMP280: Temperature "));
+	Serial.print(msg.bmp280_temp);
+	Serial.print(" *C Pressure ");
+
+	Serial.print(msg.bmp280_pres);
+	Serial.print(" Pa ");
+	Serial.print(msg.bmp280_pres*0.0075006375542,2);
+	Serial.println(" mmHg");
+#endif
+}
+
+void get_data_ds1820(void)
+{
+	byte i;
+	byte present = 0;
+	byte data[12];
+
+	// Wait a few seconds between measurements.
+	delay(3000);
+	ds1820.reset();
+	ds1820.select(ds1820_addr);
+	ds1820.write(0x44, 1);  // Датчик подключен с выделенной линией питания
+
+	delay(1200);  // 750 может быть достаточно, а может быть и не хватит
+	// мы могли бы использовать тут ds.depower(), но reset позаботится об этом
+	present = ds1820.reset();
+	ds1820.select(ds1820_addr);
+	//ds1820.write(0xCC);
+	ds1820.write(0xBE);  // Read Scratchpad
+
+	// Считываем 9 байт с датчика
+	for ( i = 0; i < 9; i++)
+	{
+		data[i] = ds1820.read();
+	}
+
+	int16_t raw = (data[1] << 8) | data[0];
+	if (ds1820_type_s)
+	{
+		raw = raw << 3;
+		if (data[7] == 0x10)
+		{
+			raw = (raw & 0xFFF0) + 12 - data[6];
+		}
+	}
+	else
+	{
+		byte cfg = (data[4] & 0x60);
+		// at lower res, the low bits are undefined, so let's zero them
+		if (cfg == 0x00) raw = raw & ~7;      // 9 bit resolution, 93.75 ms
+		else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+		else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+		// default is 12 bit resolution, 750 ms conversion time
+	}
+	msg.ds1820_temp = (float)raw / 16.0;
+
+#if DEBUG
+	Serial.print("DS1820: Temperature ");
+	Serial.print(msg.ds1820_temp);
+	Serial.println(" *C ");
+#endif
+}
+
+/*
+ * Расчитывает напряжение аккумулятора подклбченного к А0
+ * на основании напряжения на повышающем модуле
+ */
+void get_voltage(void)
+{
+	float Vcc = 5.12; // Примерное напряжение на повышающем модуле
+	int value = analogRead(0); // читаем показания с А0
+	msg.voltage = (value / 1023.0) * Vcc;
+}
+
+/*
+ * Функция отправляет данные на сервер при помощи модулей nrf24.
+ * Структура передаваемых данных Message описана выше
+ * В случае ошибки при передаче данных будет сделано SEND_COUNT 
+ * попыток с интервалом в SEND_DELAY. Если данные не отправлены
+ * создается соответсвуюшая запись в msg.send_err.
+ * Возвращает 0 в случае успешной отправки, иначе -1.
+ */
+int send_data(void)
+{
+	msg.uptime = millis();
+
+	byte send_num = 0;
+
+	msg.id++;
+
+	while ( !nrf24.write(&msg, sizeof(msg)) && send_num < SEND_COUNT )
+	{
+#if DEBUG
+		Serial.print("Send error, retrying... (");
+		Serial.print(send_num + 1);
+		Serial.print("/");
+		Serial.print(SEND_COUNT);
+		Serial.println(")");
+#endif
+		send_num++;
+		delay(SEND_DELAY);
+	}
+	if (send_num >= SEND_COUNT)
+	{
+		msg.send_err++;
+	}
+
+#if DEBUG
+	Serial.print("Send count: ");
+	Serial.print(msg.id);
+	Serial.print(", Send err: ");
+	Serial.println(msg.send_err);
+#endif
+
+	return send_num >= SEND_COUNT ? -1 : 0;
+}
+
 /*
  * Функция ищет датчик ds1820 и определяет его тип.
  * Мы используем только один ds1820, поэтому ограничимся
@@ -137,113 +260,17 @@ void setup()
 
 void loop()
 {
-	byte i;
-	byte present = 0;
-	byte data[12];
 #if DEBUG
 	Serial.println("==============================================");
 #endif
 	nrf24.powerUp();
-	// ============== DS1820 ==============
-	// Wait a few seconds between measurements.
-	delay(3000);
-	ds1820.reset();
-	ds1820.select(ds1820_addr);
-	ds1820.write(0x44, 1);  // Датчик подключен с выделенной линией питания
 
-	delay(1200);  // 750 может быть достаточно, а может быть и не хватит
-	// мы могли бы использовать тут ds.depower(), но reset позаботится об этом
-	present = ds1820.reset();
-	ds1820.select(ds1820_addr);
-	//ds1820.write(0xCC);
-	ds1820.write(0xBE);  // Read Scratchpad
+	get_data_ds1820();
+	get_data_bmp280();
+	get_voltage();
+	send_data();
 
-	// Считываем 9 байт с датчика
-	for ( i = 0; i < 9; i++)
-	{
-		data[i] = ds1820.read();
-	}
-
-	int16_t raw = (data[1] << 8) | data[0];
-	if (ds1820_type_s)
-	{
-		raw = raw << 3;
-		if (data[7] == 0x10)
-		{
-			raw = (raw & 0xFFF0) + 12 - data[6];
-		}
-	}
-	else
-	{
-		byte cfg = (data[4] & 0x60);
-		// at lower res, the low bits are undefined, so let's zero them
-		if (cfg == 0x00) raw = raw & ~7;      // 9 bit resolution, 93.75 ms
-		else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
-		else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
-		// default is 12 bit resolution, 750 ms conversion time
-	}
-	msg.ds1820_temp = (float)raw / 16.0;
-
-#if DEBUG
-	Serial.print("DS1820: Temperature ");
-	Serial.print(msg.ds1820_temp);
-	Serial.println(" *C ");
-#endif
-
-	// ============== BMP280 ==============
-
-	msg.bmp280_temp = bmp280.readTemperature();
-	msg.bmp280_pres = bmp280.readPressure();
-
-#if DEBUG
-	Serial.print(F("BMP280: Temperature "));
-	Serial.print(msg.bmp280_temp);
-	Serial.print(" *C Pressure ");
-
-	Serial.print(msg.bmp280_pres);
-	Serial.print(" Pa ");
-	Serial.print(msg.bmp280_pres*0.0075006375542,2);
-	Serial.println(" mmHg");
-#endif
-
-	// ============== Check V ==============
-
-	float Vcc = 5.12; // Примерное напряжение на повышающем модуле
-	int value = analogRead(0); // читаем показания с А0
-	msg.voltage = (value / 1023.0) * Vcc;
-
-	// ============== SEND DATA ==============
-	msg.uptime = millis();
-
-	byte send_num = 0;
-
-	msg.id++;
-
-	while ( !nrf24.write(&msg, sizeof(msg)) && send_num < SEND_COUNT )
-	{
-#if DEBUG
-		Serial.print("Send error, retrying... (");
-		Serial.print(send_num + 1);
-		Serial.print("/");
-		Serial.print(SEND_COUNT);
-		Serial.println(")");
-#endif
-		send_num++;
-		delay(SEND_DELAY);
-	}
-	if (send_num >= SEND_COUNT)
-	{
-		msg.send_err++;
-	}
-
-#if DEBUG
-	Serial.print("Send count: ");
-	Serial.print(msg.id);
-	Serial.print(", Send err: ");
-	Serial.println(msg.send_err);
-#endif
-
-	nrf24.powerDown(); // Переходим в режим энергосбережения
+	nrf24.powerDown(); // Переводим nrf24 в режим энергосбережения
 
 	delay(60000);
 }
