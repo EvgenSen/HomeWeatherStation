@@ -7,7 +7,7 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-#define DEBUG 0
+#define DEBUG 1
 
 #define SEND_COUNT 15
 #define SEND_DELAY 20
@@ -219,15 +219,19 @@ void loop()
 
 	msg.id++;
 
-	while ( !nrf24.write(&msg, sizeof(msg)) || send_num > SEND_COUNT )
+	while ( !nrf24.write(&msg, sizeof(msg)) && send_num < SEND_COUNT )
 	{
 #if DEBUG
-		Serial.println("Send error, retrying...");
+		Serial.print("Send error, retrying... (");
+		Serial.print(send_num + 1);
+		Serial.print("/");
+		Serial.print(SEND_COUNT);
+		Serial.println(")");
 #endif
 		send_num++;
 		delay(SEND_DELAY);
 	}
-	if (send_num > SEND_COUNT)
+	if (send_num >= SEND_COUNT)
 	{
 		msg.send_err++;
 	}
