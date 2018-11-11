@@ -6,11 +6,14 @@
 #include <DHT.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <LowPower.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
-#define SEND_COUNT 15
-#define SEND_DELAY 20
+#define INTERVAL 60  // Интревал обновления показаний датчиков и отправки данных в секундах
+
+#define SEND_COUNT 15  // Количество попыток отправить данные в случае ошибки при отправке
+#define SEND_DELAY 20  // Интревал между попытками отправить
 
 // Структура передаваемых данных
 typedef struct
@@ -21,7 +24,7 @@ typedef struct
 	float voltage;      // Напряжение аккумулятора
 	unsigned long id;   // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
 	unsigned int send_err;  // Количество неудачных попыток отправить данные
-	unsigned long uptime;   // Время работы датчика
+	//unsigned long uptime;   // Время работы датчика
 }
 Message;
 Message msg;
@@ -32,6 +35,8 @@ RF24             nrf24(9, 10);  // Пины CE и CSN подключены к D9
 
 byte ds1820_addr[8];
 byte ds1820_type_s;
+boolean wake_flag;
+int sleep_count;
 
 void get_data_bmp280(void)
 {
@@ -123,25 +128,25 @@ void get_voltage(void)
  */
 int send_data(void)
 {
-	msg.uptime = millis();
+	//msg.uptime = millis(); // не будет корректно работать из-за прерываний
 
-	byte send_num = 0;
+	byte send_count = 0;
 
 	msg.id++;
 
-	while ( !nrf24.write(&msg, sizeof(msg)) && send_num < SEND_COUNT )
+	while ( !nrf24.write(&msg, sizeof(msg)) && send_count < SEND_COUNT )
 	{
 #if DEBUG
 		Serial.print("Send error, retrying... (");
-		Serial.print(send_num + 1);
+		Serial.print(send_count + 1);
 		Serial.print("/");
 		Serial.print(SEND_COUNT);
 		Serial.println(")");
 #endif
-		send_num++;
+		send_count++;
 		delay(SEND_DELAY);
 	}
-	if (send_num >= SEND_COUNT)
+	if (send_count >= SEND_COUNT)
 	{
 		msg.send_err++;
 	}
@@ -153,7 +158,7 @@ int send_data(void)
 	Serial.println(msg.send_err);
 #endif
 
-	return send_num >= SEND_COUNT ? -1 : 0;
+	return send_count >= SEND_COUNT ? -1 : 0;
 }
 
 /*
@@ -235,6 +240,7 @@ void setup()
 	Serial.begin(9600);
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
+	               "Type: sensor\n"
 	               "Version:  v0.1 (Not release)\n\n"));
 	Serial.println(F("Start temperature test"));
 
@@ -254,23 +260,33 @@ void setup()
 
 	msg.id=0;
 	msg.send_err=0;
+	wake_flag=1; // На первой итерации делаем измерения
 
 	Serial.println(F("Initialization successful"));
 }
 
 void loop()
 {
+	if (wake_flag)
+	{
 #if DEBUG
-	Serial.println("==============================================");
+		Serial.println("==============================================");
 #endif
-	nrf24.powerUp();
+		nrf24.powerUp();
+		get_data_ds1820();
+		get_data_bmp280();
+		get_voltage();
+		send_data();
+		nrf24.powerDown(); // Переводим nrf24 в режим энергосбережения
+		wake_flag = 0;
+	}
 
-	get_data_ds1820();
-	get_data_bmp280();
-	get_voltage();
-	send_data();
-
-	nrf24.powerDown(); // Переводим nrf24 в режим энергосбережения
-
-	delay(60000);
+	LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  // спать 8 сек. (макс. значение библиотеки) mode POWER_OFF, АЦП выкл
+	sleep_count++;
+	if (sleep_count >= 7) // задержка около минуты
+	{
+		wake_flag = 1;
+		sleep_count = 0;
+		delay(2);  // задержка для стабильности
+	}
 }

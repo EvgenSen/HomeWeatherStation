@@ -15,7 +15,7 @@ typedef struct
 	float voltage;      // Напряжение аккумулятора
 	unsigned long id;   // Номер сообщения или Количество всех попыток отправить данные (MAX 65535)
 	unsigned int send_err;  // Количество неудачных попыток отправить данные
-	unsigned long uptime;   // Время работы датчика
+	//unsigned long uptime;   // Время работы датчика
 }
 Message;
 Message msg;
@@ -115,6 +115,7 @@ void setup()
 	Serial.begin(9600);
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
+	               "Type: server\n"
 	               "Version:  v0.1 (Not release)\n\n"));
 	dht22.begin();
 	setup_nrf24();
@@ -148,7 +149,7 @@ void loop()
 			Serial.print(msg.bmp280_temp); Serial.print("\t");
 			Serial.print(msg.bmp280_pres); Serial.print("\t");
 			Serial.print(msg.voltage); Serial.print("\t");
-			Serial.print(msg.uptime);  Serial.print("\t");
+			Serial.print(millis());  Serial.print("\t");  // msg.uptime
 			Serial.print(msg.send_err); Serial.print("\t");
 			Serial.println(duplicate_count);
 #else
@@ -159,7 +160,7 @@ void loop()
 			Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
 			Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres);
 			Serial.print("          voltage:     "); Serial.println(msg.voltage);
-			Serial.print("          uptime:      "); print_uptime(msg.uptime);
+			Serial.print("          uptime:      "); print_uptime(millis());
 			Serial.print("          send_err:    "); Serial.println(msg.send_err);
 			Serial.print("          duplicate:   "); Serial.println(duplicate_count);
 			Serial.println("=================================");
