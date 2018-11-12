@@ -1,0 +1,3 @@
+[submodule "libs/LowPower"]
+	path = libs/LowPower
+	url = https://github.com/rocketscream/Low-Power.git
