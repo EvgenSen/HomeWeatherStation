@@ -1,10 +1,11 @@
-#include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
 #include <DHT.h>
 #include <iarduino_OLED_txt.h>
 
 #define EXEL_OUTPUT 1
+
+#define VERSION "v0.1 (Not release)"
 
 // Структура передаваемых данных
 typedef struct
@@ -83,9 +84,11 @@ int setup_oled(void)
 	oled128x64.begin();
 	oled128x64.setFont(MediumFontRus);
 	oled128x64.setCoding(TXT_UTF8);
-	oled128x64.print("Weather:", OLED_L, 1);
+	oled128x64.print("Weather", OLED_L, 1);
 	//               "----------"
 	oled128x64.setFont(SmallFontRus);
+	oled128x64.print(VERSION, OLED_L, 3);
+	oled128x64.print("Wait sensor...", OLED_L, 4);
 
 	return 0;
 }
@@ -116,7 +119,7 @@ void setup()
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
 	               "Type: server\n"
-	               "Version:  v0.1 (Not release)\n\n"));
+	               "Version:  " VERSION "\n\n"));
 	dht22.begin();
 	setup_nrf24();
 	setup_oled();
@@ -136,6 +139,7 @@ void loop()
 			get_data_dht();
 			last_msg_id =  msg.id;
 			msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
+			oled128x64.clrScr();
 			oled128x64.print("dht22:  ", OLED_L, 2);  oled128x64.print(dht22_temp,      OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
 			oled128x64.print("dht22:  ", OLED_L, 3);  oled128x64.print(dht22_hum,       OLED_N, 3, 2);  oled128x64.print(" %",     OLED_N, 3);
 			oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(msg.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
