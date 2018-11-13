@@ -10,3 +10,6 @@
 [submodule "libs/BMP280"]
 	path = libs/BMP280
 	url = https://github.com/adafruit/Adafruit_BMP280_Library.git
+[submodule "libs/OneWire"]
+	path = libs/OneWire
+	url = https://github.com/PaulStoffregen/OneWire.git
