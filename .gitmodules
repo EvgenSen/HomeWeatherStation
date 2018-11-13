@@ -7,3 +7,6 @@
 [submodule "libs/DHT-sensor-library"]
 	path = libs/DHT-sensor-library
 	url = https://github.com/adafruit/DHT-sensor-library.git
+[submodule "libs/BMP280"]
+	path = libs/BMP280
+	url = https://github.com/adafruit/Adafruit_BMP280_Library.git
