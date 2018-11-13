@@ -7,6 +7,10 @@
 
 #define VERSION "v0.1 (Not release)"
 
+#define PIN_BUTTON A0  // кнопка подключена к A5
+
+#define DISP_WORK_TIME 10000 // Дисплей работает в течении 10 секунд
+
 // Структура передаваемых данных
 typedef struct
 {
@@ -24,6 +28,13 @@ Message msg;
 RF24 nrf24(9, 10);     // Пины CE и CSN подключены к D9 и D10
 DHT  dht22(4, DHT22);  // DHT22 подключен к D4
 iarduino_OLED_txt oled128x64(0x3C);  // Объявляем объект OLED, указывая адрес дисплея на шине I2C: 0x3C или 0x3D.
+
+boolean butt_now = 0;   // Состояние пина кнопки в данный момент
+boolean butt_prev = 0;  // Состояние пина кнопки в предыдущий момент
+
+// Последнее время активации дислпея
+// Первоначальное значение большое, чтобы дисплей не отключался, до получения первых данных
+unsigned long disp_last_time = 1000000;
 
 // Подключаем шрифты
 // extern uint8_t MediumFont[];
@@ -79,6 +90,53 @@ int get_data_dht(void)
   return 0;
 }
 
+void print_data_port(void)
+{
+	msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
+#if EXEL_OUTPUT
+	Serial.print(msg.id); Serial.print("\t");
+	Serial.print(msg.ds1820_temp); Serial.print("\t");
+	Serial.print(dht22_temp); Serial.print("\t");
+	Serial.print(dht22_hum); Serial.print("\t");
+	Serial.print(msg.bmp280_temp); Serial.print("\t");
+	Serial.print(msg.bmp280_pres); Serial.print("\t");
+	Serial.print(msg.voltage); Serial.print("\t");
+	Serial.print(millis());  Serial.print("\t");  // msg.uptime
+	Serial.print(msg.send_err); Serial.print("\t");
+	Serial.println(duplicate_count);
+#else
+	Serial.print("Recieved: id:          "); Serial.println(msg.id);
+	Serial.print("          ds1820_temp: "); Serial.println(msg.ds1820_temp);
+	Serial.print("          dht22_temp:  "); Serial.println(dht22_temp);
+	Serial.print("          dht22_hum:   "); Serial.println(dht22_hum);
+	Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
+	Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres);
+	Serial.print("          voltage:     "); Serial.println(msg.voltage);
+	Serial.print("          uptime:      "); print_uptime(millis());
+	Serial.print("          send_err:    "); Serial.println(msg.send_err);
+	Serial.print("          duplicate:   "); Serial.println(duplicate_count);
+	Serial.println("=================================");
+#endif
+}
+
+/*
+ * Выводи информацию на дисплей
+ * Если дисплей уже включен, то просто обновляет время
+ */
+void print_data_display(void)
+{
+	if((millis() > disp_last_time) && (millis() - disp_last_time > DISP_WORK_TIME))
+	{
+		oled128x64.clrScr();
+		oled128x64.print("dht22:  ", OLED_L, 2);  oled128x64.print(dht22_temp,      OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
+		oled128x64.print("dht22:  ", OLED_L, 3);  oled128x64.print(dht22_hum,       OLED_N, 3, 2);  oled128x64.print(" %",     OLED_N, 3);
+		oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(msg.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
+		oled128x64.print("bmp280: ", OLED_L, 5);  oled128x64.print(msg.bmp280_pres, OLED_N, 5, 2);  oled128x64.print(" mmHg",  OLED_N, 5);
+		oled128x64.print("volt:   ", OLED_L, 6);  oled128x64.print(msg.voltage,     OLED_N, 6, 2);  oled128x64.print(" v",     OLED_N, 6);
+	}
+	disp_last_time = millis();
+}
+
 int setup_oled(void)
 {
 	oled128x64.begin();
@@ -120,60 +178,52 @@ void setup()
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
 	               "Type: server\n"
 	               "Version:  " VERSION "\n\n"));
+	pinMode(PIN_BUTTON, INPUT_PULLUP); // включаем резистор для кнопки
 	dht22.begin();
 	setup_nrf24();
 	setup_oled();
 #if EXEL_OUTPUT
-	Serial.println("id\tds1820\tdht22\tdht22\tbmp280\tbmp280\tvolt\tuptime\t\terr\tduplicate");
+	Serial.println("id\tds1820\tdht22\tdht22\tbmp280\tbmp280\tvolt\tuptime\terr\tduplicate");
 #endif
 }
 
 void loop()
 {
-	while(nrf24.available())
+	while(nrf24.available()) // Проверяем входные данные
 	{
-		nrf24.read(&msg, sizeof(msg));         // чиатем входящий сигнал
-
+		// Если есть считываем сообщение
+		nrf24.read(&msg, sizeof(msg));
 		if(last_msg_id < msg.id)
 		{
+			// Если это не дупликат, считываем показания dht и выводим в послед. порт
 			get_data_dht();
+			if (last_msg_id == 0)
+			{
+				// Если это первое сообщение - обновляем дисплей
+				disp_last_time = 0;
+				print_data_display();
+			}
 			last_msg_id =  msg.id;
-			msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
-			oled128x64.clrScr();
-			oled128x64.print("dht22:  ", OLED_L, 2);  oled128x64.print(dht22_temp,      OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
-			oled128x64.print("dht22:  ", OLED_L, 3);  oled128x64.print(dht22_hum,       OLED_N, 3, 2);  oled128x64.print(" %",     OLED_N, 3);
-			oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(msg.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
-			oled128x64.print("bmp280: ", OLED_L, 5);  oled128x64.print(msg.bmp280_pres, OLED_N, 5, 2);  oled128x64.print(" mmHg",  OLED_N, 5);
-			oled128x64.print("volt:   ", OLED_L, 6);  oled128x64.print(msg.voltage,     OLED_N, 6, 2);  oled128x64.print(" v",     OLED_N, 6);
-#if EXEL_OUTPUT
-			Serial.print(msg.id); Serial.print("\t");
-			Serial.print(msg.ds1820_temp); Serial.print("\t");
-			Serial.print(dht22_temp); Serial.print("\t");
-			Serial.print(dht22_hum); Serial.print("\t");
-			Serial.print(msg.bmp280_temp); Serial.print("\t");
-			Serial.print(msg.bmp280_pres); Serial.print("\t");
-			Serial.print(msg.voltage); Serial.print("\t");
-			Serial.print(millis());  Serial.print("\t");  // msg.uptime
-			Serial.print(msg.send_err); Serial.print("\t");
-			Serial.println(duplicate_count);
-#else
-			Serial.print("Recieved: id:          "); Serial.println(msg.id);
-			Serial.print("          ds1820_temp: "); Serial.println(msg.ds1820_temp);
-			Serial.print("          dht22_temp:  "); Serial.println(dht22_temp);
-			Serial.print("          dht22_hum:   "); Serial.println(dht22_hum);
-			Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
-			Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres);
-			Serial.print("          voltage:     "); Serial.println(msg.voltage);
-			Serial.print("          uptime:      "); print_uptime(millis());
-			Serial.print("          send_err:    "); Serial.println(msg.send_err);
-			Serial.print("          duplicate:   "); Serial.println(duplicate_count);
-			Serial.println("=================================");
-#endif
+			print_data_port();
 		}
 		else
 		{
 			duplicate_count++;
 		}
-
+	}
+	butt_now = !digitalRead(PIN_BUTTON); // получаем сотояние кнопки
+	if ( butt_now == 1 && butt_prev == 0 ) // кнопка нажата
+	{
+		butt_prev = 1;
+	}
+	if ( butt_now == 0 && butt_prev == 1 ) // кнопка отпущена
+	{
+		print_data_display();
+		butt_prev = 0;
+	}
+	if((millis() > disp_last_time) && (millis() - disp_last_time > DISP_WORK_TIME))
+	{
+		// Отключаем дисплей через DISP_WORK_TIME милисекунд
+		oled128x64.clrScr();
 	}
 }
