@@ -13,3 +13,6 @@
 [submodule "libs/OneWire"]
 	path = libs/OneWire
 	url = https://github.com/PaulStoffregen/OneWire.git
+[submodule "libs/AdafruitSensor"]
+	path = libs/AdafruitSensor
+	url = https://github.com/adafruit/Adafruit_Sensor.git
