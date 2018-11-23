@@ -92,7 +92,6 @@ int get_data_dht(void)
 
 void print_data_port(void)
 {
-	msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
 #if EXEL_OUTPUT
 	Serial.print(msg.id); Serial.print("\t");
 	Serial.print(msg.ds1820_temp); Serial.print("\t");
@@ -133,6 +132,10 @@ void print_data_display(void)
 		oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(msg.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
 		oled128x64.print("bmp280: ", OLED_L, 5);  oled128x64.print(msg.bmp280_pres, OLED_N, 5, 2);  oled128x64.print(" mmHg",  OLED_N, 5);
 		oled128x64.print("volt:   ", OLED_L, 6);  oled128x64.print(msg.voltage,     OLED_N, 6, 2);  oled128x64.print(" v",     OLED_N, 6);
+		oled128x64.print("id/err: ", OLED_L, 7);
+		oled128x64.print(msg.id,     OLED_N, 7, 10);
+		oled128x64.print("/",        OLED_N, 7);
+		oled128x64.print(msg.send_err, OLED_N, 7, 10);
 	}
 	disp_last_time = millis();
 }
@@ -160,7 +163,7 @@ int setup_nrf24(void)
 	nrf24.setPayloadSize(32);  // размер пакета, в байтах
 	nrf24.openReadingPipe(1, 0xF0F0F0F0F0);  // открываем канал для получения данных по адресу 0xF0F0F0F0F0
 	nrf24.setChannel(0x60);          // выбираем канал (в котором нет шумов!)
-	nrf24.setPALevel(RF24_PA_HIGH);  // уровень мощности передатчика. {RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX}
+	nrf24.setPALevel(RF24_PA_MAX);   // уровень мощности передатчика. {RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH, RF24_PA_MAX}
 	nrf24.setDataRate(RF24_1MBPS);   // скорость обмена.              {RF24_2MBPS, RF24_1MBPS, RF24_250KBPS}
 	// Скорость должна быть одинакова на приёмнике и передатчике!
 	// При самой низкой скорости имеем самую высокую чувствительность и дальность, но большее потребление энергии
@@ -193,10 +196,12 @@ void loop()
 	{
 		// Если есть считываем сообщение
 		nrf24.read(&msg, sizeof(msg));
+		msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
 		if(last_msg_id < msg.id)
 		{
 			// Если это не дупликат, считываем показания dht и выводим в послед. порт
 			get_data_dht();
+			print_data_port();
 			if (last_msg_id == 0)
 			{
 				// Если это первое сообщение - обновляем дисплей
@@ -204,23 +209,24 @@ void loop()
 				print_data_display();
 			}
 			last_msg_id =  msg.id;
-			print_data_port();
 		}
 		else
 		{
 			duplicate_count++;
 		}
 	}
+
 	butt_now = !digitalRead(PIN_BUTTON); // получаем сотояние кнопки
-	if ( butt_now == 1 && butt_prev == 0 ) // кнопка нажата
+	if ( butt_now > butt_prev )      // кнопка нажата
 	{
 		butt_prev = 1;
 	}
-	if ( butt_now == 0 && butt_prev == 1 ) // кнопка отпущена
+	else if ( butt_now < butt_prev ) // кнопка отпущена
 	{
 		print_data_display();
 		butt_prev = 0;
 	}
+
 	if((millis() > disp_last_time) && (millis() - disp_last_time > DISP_WORK_TIME))
 	{
 		// Отключаем дисплей через DISP_WORK_TIME милисекунд
