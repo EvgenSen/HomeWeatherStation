@@ -10,7 +10,9 @@
 
 #define DEBUG 0
 
-#define INTERVAL 60  // Интревал обновления показаний датчиков и отправки данных в секундах
+// Коэфициент для интревала обновления показаний датчиков и отправки данных
+#define INTERVAL_1_MIN  7   // ~ 65  секунд
+#define INTERVAL_10_MIN 69  // ~ 599 секундa
 
 #define SEND_COUNT 15  // Количество попыток отправить данные в случае ошибки при отправке
 #define SEND_DELAY 20  // Интревал между попытками отправить
@@ -240,7 +242,7 @@ void setup()
 	Serial.begin(9600);
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
-	               "Type: sensor\n"
+	               "Type:     sensor\n"
 	               "Version:  v0.1 (Not release)\n\n"));
 	Serial.println(F("Start temperature test"));
 
@@ -283,7 +285,7 @@ void loop()
 
 	LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);  // спать 8 сек. (макс. значение библиотеки) mode POWER_OFF, АЦП выкл
 	sleep_count++;
-	if (sleep_count >= 7) // задержка около минуты
+	if (sleep_count >= INTERVAL_10_MIN) // задержка около 10 минут
 	{
 		wake_flag = 1;
 		sleep_count = 0;
