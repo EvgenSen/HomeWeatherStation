@@ -119,7 +119,7 @@ void print_data_port(void)
 }
 
 /*
- * Выводи информацию на дисплей
+ * Выводим информацию на дисплей
  * Если дисплей уже включен, то просто обновляет время
  */
 void print_data_display(void)
@@ -179,7 +179,7 @@ void setup()
 	Serial.begin(9600);
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
-	               "Type: server\n"
+	               "Type:     server\n"
 	               "Version:  " VERSION "\n\n"));
 	pinMode(PIN_BUTTON, INPUT_PULLUP); // включаем резистор для кнопки
 	dht22.begin();
