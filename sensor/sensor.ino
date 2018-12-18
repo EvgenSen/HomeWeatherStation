@@ -10,6 +10,19 @@
 
 #define DEBUG 0
 
+#if DEBUG
+#include <stdio.h>
+static int serial_fputchar(const char ch, FILE *stream) { Serial.write(ch); return ch; }
+static FILE *serial_stream = fdevopen(serial_fputchar, NULL);
+#endif
+
+#if DEBUG
+//#define PRINTF_DBG(format, ...) printf (format, __VA_ARGS__);
+#define PRINTF_DBG(...) printf (__VA_ARGS__);
+#else
+#define PRINTF_DBG(format, ...)
+#endif
+
 // Коэфициент для интревала обновления показаний датчиков и отправки данных
 #define INTERVAL_1_MIN  7   // ~ 65  секунд
 #define INTERVAL_10_MIN 69  // ~ 599 секундa
@@ -102,11 +115,8 @@ void get_data_ds1820(void)
 	}
 	msg.ds1820_temp = (float)raw / 16.0;
 
-#if DEBUG
-	Serial.print("DS1820: Temperature ");
-	Serial.print(msg.ds1820_temp);
-	Serial.println(" *C ");
-#endif
+	// Вместо %f можно использовать также функцию dtostrf
+	PRINTF_DBG("DS1820: Temperature %d.%02d *C\n", (int)msg.ds1820_temp, (int)(msg.ds1820_temp*100)%100);
 }
 
 /*
@@ -138,13 +148,7 @@ int send_data(void)
 
 	while ( !nrf24.write(&msg, sizeof(msg)) && send_count < SEND_COUNT )
 	{
-#if DEBUG
-		Serial.print("Send error, retrying... (");
-		Serial.print(send_count + 1);
-		Serial.print("/");
-		Serial.print(SEND_COUNT);
-		Serial.println(")");
-#endif
+		PRINTF_DBG("Send error, retrying... (%d/%d)\n", send_count + 1, SEND_COUNT);
 		send_count++;
 		delay(SEND_DELAY);
 	}
@@ -153,12 +157,7 @@ int send_data(void)
 		msg.send_err++;
 	}
 
-#if DEBUG
-	Serial.print("Send count: ");
-	Serial.print(msg.id);
-	Serial.print(", Send err: ");
-	Serial.println(msg.send_err);
-#endif
+	PRINTF_DBG("Send count: %d, Send err: %d\n", msg.id, msg.send_err);
 
 	return send_count >= SEND_COUNT ? -1 : 0;
 }
@@ -173,7 +172,7 @@ int setup_ds1820(void)
 {
 	if ( !ds1820.search(ds1820_addr))
 	{
-		Serial.println("Error: Could not find DS18x20 sensor!");
+		PRINTF_DBG("Error: Could not find DS18x20 sensor!\n");
 		ds1820.reset_search();
 		//delay(250);
 		return -1;
@@ -191,26 +190,26 @@ int setup_ds1820(void)
 	// считаем crc
 	if (OneWire::crc8(ds1820_addr, 7) != ds1820_addr[7])
 	{
-		Serial.println("Error: CRC is not valid!");
+		PRINTF_DBG("Error: CRC is not valid!\n");
 		return -1;
 	}
 	// определяем тип датчика
 	switch (ds1820_addr[0])
 	{
 	case 0x10:
-		Serial.println("Founded chip: DS18S20/DS1820");
+		PRINTF_DBG("Founded chip: DS18S20/DS1820\n");
 		ds1820_type_s = 1;
 		break;
 	case 0x28:
-		Serial.println("Founded chip: DS18B20");
+		PRINTF_DBG("Founded chip: DS18B20\n");
 		ds1820_type_s = 0;
 		break;
 	case 0x22:
-		Serial.println("Founded chip: DS1822");
+		PRINTF_DBG("Founded chip: DS1822\n");
 		ds1820_type_s = 0;
 		break;
 	default:
-		Serial.println("Error: Founded device is not a DS18x20 family");
+		PRINTF_DBG("Error: Founded device is not a DS18x20 family\n");
 		return -1;
 	}
 	return 0;
@@ -232,29 +231,33 @@ int setup_nrf24(void)
 
 	//nrf24.powerUp();        // начать работу
 	nrf24.stopListening();  // не слушаем радиоэфир, мы передатчик
-
-	//nrf24.printDetails();
+#if DEBUG
+	nrf24.printDetails();
+#endif
 	return 0;
 }
 
 void setup()
 {
+#if DEBUG
+	stdout = serial_stream;
 	Serial.begin(9600);
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
 	               "Type:     sensor\n"
 	               "Version:  v0.1 (Not release)\n\n"));
 	Serial.println(F("Start temperature test"));
+#endif
 
 	// Китайский bmp280 использует нестандартный адрес (0x76)
 	if (!bmp280.begin(0x76))
 	{
-		Serial.println(F("Error: Could not find BMP280 sensor! Check wiring or address"));
+		PRINTF_DBG("Error: Could not find BMP280 sensor! Check wiring or address\n");
 		while (1);
 	}
 	if (setup_ds1820())
 	{
-		Serial.println(F("Error: Could not init DS18x20 sensor!"));
+		PRINTF_DBG("Error: Could not init DS18x20 sensor!\n");
 		while (1);
 	}
 
@@ -263,17 +266,14 @@ void setup()
 	msg.id=0;
 	msg.send_err=0;
 	wake_flag=1; // На первой итерации делаем измерения
-
-	Serial.println(F("Initialization successful"));
+	PRINTF_DBG("Initialization successful\n");
 }
 
 void loop()
 {
 	if (wake_flag)
 	{
-#if DEBUG
-		Serial.println("==============================================");
-#endif
+		PRINTF_DBG("==============================================\n");
 		nrf24.powerUp();
 		get_data_ds1820();
 		get_data_bmp280();
