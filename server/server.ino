@@ -3,13 +3,15 @@
 #include <DHT.h>
 #include <iarduino_OLED_txt.h>
 
-#define EXEL_OUTPUT 1
+#define EXEL_OUTPUT 0
 
 #define VERSION "v0.1 (Not release)"
 
 #define PIN_BUTTON A0  // кнопка подключена к A5
 
 #define DISP_WORK_TIME 10000 // Дисплей работает в течении 10 секунд
+
+#define CONN_INTERVAL 614000 + 15000 // Время между отправками данных датчиком + погрешность в 15 секунд
 
 // Структура передаваемых данных
 typedef struct
@@ -32,9 +34,8 @@ iarduino_OLED_txt oled128x64(0x3C);  // Объявляем объект OLED, у
 boolean butt_now = 0;   // Состояние пина кнопки в данный момент
 boolean butt_prev = 0;  // Состояние пина кнопки в предыдущий момент
 
-// Последнее время активации дислпея
-// Первоначальное значение большое, чтобы дисплей не отключался, до получения первых данных
-unsigned long disp_last_time = 1000000;
+unsigned long disp_last_time = 0;  // Время последней активации дислпея
+unsigned long conn_last_time = -1; // Время последнего принятия данных с датчика
 
 // Подключаем шрифты
 // extern uint8_t MediumFont[];
@@ -54,7 +55,7 @@ void print_uptime(unsigned long time_millis)
 	// Считаем и выводим дни
 	Serial.print (time/60/60/24);
 	Serial.print (" days ");
-	// Вычитаем количество целых дней 
+	// Вычитаем количество целых дней
 	time-=(time/60/60/24)*60*60*24;
 	// Считаем и выводим часы
 	if (time/60/60<10) { Serial.print ("0"); }
@@ -119,14 +120,43 @@ void print_data_port(void)
 }
 
 /*
- * Выводим информацию на дисплей
- * Если дисплей уже включен, то просто обновляет время
+ * Функция ыводит информацию на дисплей
+ * Если дисплей уже включен, то просто обновляет время, для таймаута выключения
  */
 void print_data_display(void)
 {
 	if((millis() > disp_last_time) && (millis() - disp_last_time > DISP_WORK_TIME))
 	{
+		unsigned long elapsed_time = conn_last_time == -1 ? -1 : millis() - conn_last_time;
+		get_data_dht(); // Обновляем показания с локального датчика
 		oled128x64.clrScr();
+		if(elapsed_time == -1)
+		{
+			oled128x64.print("Not Connected", OLED_L, 0);
+			oled128x64.print("Err: Check sensor",  OLED_L, 1);
+		}
+		else
+		{
+			// Проверяем как давно было последнее подключение, выводим время с последнего подключения и его состояние
+			oled128x64.print(elapsed_time > CONN_INTERVAL ? "Connection lost" : "Connected ", OLED_L, 0);
+			// Переводим время в читабельный формат по принципу print_uptime()
+			elapsed_time=elapsed_time/1000; // мс -> c
+			unsigned long days = elapsed_time/60/60/24;
+			if (days)
+			{
+				elapsed_time -= days*60*60*24;
+				// Формат строки: 'Elapsed: Xd, Xh !!!'
+				oled128x64.print("Elapsed: ", OLED_L, 1); oled128x64.print(days,               OLED_N, 1, 10); oled128x64.print("d, ",  OLED_N, 1);
+				                                          oled128x64.print(elapsed_time/60/60, OLED_N, 1, 10); oled128x64.print("h !!!", OLED_N, 1);
+			}
+			else
+			{
+				// Формат строки: 'Elapsed: Xh, Xm'
+				oled128x64.print("Elapsed: ", OLED_L, 1); oled128x64.print(elapsed_time/60/60, OLED_N, 1, 10); oled128x64.print("h, ", OLED_N, 1);
+				                                          oled128x64.print(elapsed_time/60%60, OLED_N, 1, 10); oled128x64.print("m",   OLED_N, 1);
+			}
+		}
+
 		oled128x64.print("dht22:  ", OLED_L, 2);  oled128x64.print(dht22_temp,      OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
 		oled128x64.print("dht22:  ", OLED_L, 3);  oled128x64.print(dht22_hum,       OLED_N, 3, 2);  oled128x64.print(" %",     OLED_N, 3);
 		oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(msg.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
@@ -146,10 +176,10 @@ int setup_oled(void)
 	oled128x64.setFont(MediumFontRus);
 	oled128x64.setCoding(TXT_UTF8);
 	oled128x64.print("Weather", OLED_L, 1);
-	//               "----------"
+	// Макс. длина: ("----------",
 	oled128x64.setFont(SmallFontRus);
 	oled128x64.print(VERSION, OLED_L, 3);
-	oled128x64.print("Wait sensor...", OLED_L, 4);
+	oled128x64.print(__DATE__, OLED_L, 4);
 
 	return 0;
 }
@@ -197,6 +227,7 @@ void loop()
 		// Если есть считываем сообщение
 		nrf24.read(&msg, sizeof(msg));
 		msg.bmp280_pres=msg.bmp280_pres*0.0075006375542; // Перевод в мм. р. ст.
+		conn_last_time = millis();
 		if(last_msg_id < msg.id)
 		{
 			// Если это не дупликат, считываем показания dht и выводим в послед. порт
@@ -217,11 +248,11 @@ void loop()
 	}
 
 	butt_now = !digitalRead(PIN_BUTTON); // получаем сотояние кнопки
-	if ( butt_now > butt_prev )      // кнопка нажата
+	if ( butt_now > butt_prev )          // кнопка нажата
 	{
 		butt_prev = 1;
 	}
-	else if ( butt_now < butt_prev ) // кнопка отпущена
+	else if ( butt_now < butt_prev )     // кнопка отпущена
 	{
 		print_data_display();
 		butt_prev = 0;
