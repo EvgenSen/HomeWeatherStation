@@ -36,3 +36,8 @@ v0.1 (Not release)
 
 
 ## Схема подключения
+
+Схема датчика:
+![sensor](https://github.com/EvgenSen/HomeWeatherStation/blob/master/sensor.png)
+Схема сервера:
+![server](https://github.com/EvgenSen/HomeWeatherStation/blob/master/server.png)
