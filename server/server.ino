@@ -5,7 +5,7 @@
 
 #define EXEL_OUTPUT 0
 
-#define VERSION "v0.1 (Not release)"
+#define VERSION "v1.0 (Release)"
 
 #define PIN_BUTTON A0  // кнопка подключена к A5
 

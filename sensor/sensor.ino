@@ -245,7 +245,7 @@ void setup()
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
 	               "Type:     sensor\n"
-	               "Version:  v0.1 (Not release)\n\n"));
+	               "Version:  v1.0 (Release)\n\n"));
 	Serial.println(F("Start temperature test"));
 #endif
 
