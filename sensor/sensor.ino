@@ -10,6 +10,8 @@
 
 #define DEBUG 0
 
+#define VERSION "v1.1 (Develop)"
+
 #if DEBUG
 #include <stdio.h>
 static int serial_fputchar(const char ch, FILE *stream) { Serial.write(ch); return ch; }
@@ -245,7 +247,7 @@ void setup()
 	Serial.print(F("Sketch:   " __FILE__ "\n"
 	               "Compiled: " __DATE__ " " __TIME__ "\n"
 	               "Type:     sensor\n"
-	               "Version:  v0.1 (Not release)\n\n"));
+	               "Version:  " VERSION "\n\n"));
 	Serial.println(F("Start temperature test"));
 #endif
 

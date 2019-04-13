@@ -5,7 +5,7 @@
 
 ## Версия
 
-v0.1 (Not release)
+v1.1 (Develop)
 
 
 ## Папки
