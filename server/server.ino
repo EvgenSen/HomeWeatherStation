@@ -13,6 +13,8 @@
 
 #define CONN_INTERVAL 614000 + 15000 // Время между отправками данных датчиком + погрешность в 15 секунд
 
+#define INIT_FLOAT_VAL -9999.0 // значение для инициализации структур max_values и min_values
+
 // Структура передаваемых данных
 typedef struct
 {
@@ -26,6 +28,18 @@ typedef struct
 }
 Message;
 Message msg;
+
+// Структура хранения данных со всех датчиков
+typedef struct
+{
+	Message sensor;
+	float dht22_temp;
+	float dht22_hum;
+}
+All_data;
+All_data cur_values; // Последние показания полученные с датчиков
+All_data max_values; // Максимальные значения показаний
+All_data min_values; // Минимальные значения показаний
 
 RF24 nrf24(9, 10);     // Пины CE и CSN подключены к D9 и D10
 DHT  dht22(4, DHT22);  // DHT22 подключен к D4
@@ -46,8 +60,44 @@ extern uint8_t SmallFontRus[];
 unsigned long last_msg_id = 0;
 unsigned int duplicate_count = 0;
 
-float dht22_temp;
-float dht22_hum;
+int init_min_max_values()
+{
+	max_values.sensor.ds1820_temp = min_values.sensor.ds1820_temp = INIT_FLOAT_VAL;
+	max_values.sensor.bmp280_temp = min_values.sensor.bmp280_temp = INIT_FLOAT_VAL;
+	max_values.sensor.bmp280_pres = min_values.sensor.bmp280_pres = INIT_FLOAT_VAL;
+	max_values.sensor.voltage     = min_values.sensor.voltage     = INIT_FLOAT_VAL;
+	max_values.dht22_temp = min_values.dht22_temp = INIT_FLOAT_VAL;
+	max_values.dht22_hum  = min_values.dht22_hum  = INIT_FLOAT_VAL;
+}
+
+#define CHECK_MAX(param) if(cur_values.param > max_values.param || max_values.param == INIT_FLOAT_VAL) \
+                           max_values.param = cur_values.param;
+#define CHECK_MIN(param) if(cur_values.param < min_values.param || min_values.param == INIT_FLOAT_VAL) \
+                           min_values.param = cur_values.param;
+#define CHECK_MIN_MAX(param) CHECK_MIN(param) CHECK_MAX(param)
+
+int check_min_max_values(int check_sensor)
+{
+	if (check_sensor)
+	{
+		CHECK_MIN_MAX(sensor.ds1820_temp);
+		CHECK_MIN_MAX(sensor.bmp280_temp);
+		CHECK_MIN_MAX(sensor.bmp280_pres);
+		CHECK_MIN_MAX(sensor.voltage);
+	}
+	CHECK_MIN_MAX(dht22_temp);
+	CHECK_MIN_MAX(dht22_hum);
+}
+
+void update_cur_data()
+{
+	cur_values.sensor.ds1820_temp = msg.ds1820_temp;
+	cur_values.sensor.bmp280_temp = msg.bmp280_temp;
+	cur_values.sensor.bmp280_pres = msg.bmp280_pres;
+	cur_values.sensor.voltage     = msg.voltage;
+	cur_values.sensor.id          = msg.id;
+	cur_values.sensor.send_err    = msg.send_err;
+}
 
 void print_uptime(unsigned long time_millis)
 {
@@ -74,12 +124,12 @@ int get_data_dht(void)
 {
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  dht22_hum  = dht22.readHumidity();
+  cur_values.dht22_hum  = dht22.readHumidity();
   // Read temperature as Celsius (the default)
-  dht22_temp = dht22.readTemperature();
+  cur_values.dht22_temp = dht22.readTemperature();
 
   // Check if any reads failed and exit early (to try again).
-  if (isnan(dht22_hum) || isnan(dht22_temp))
+  if (isnan(cur_values.dht22_hum) || isnan(cur_values.dht22_temp))
   {
     Serial.println("Failed to read from DHT sensor!");
     return -1;
@@ -94,26 +144,26 @@ int get_data_dht(void)
 void print_data_port(void)
 {
 #if EXEL_OUTPUT
-	Serial.print(msg.id); Serial.print("\t");
-	Serial.print(msg.ds1820_temp); Serial.print("\t");
-	Serial.print(dht22_temp); Serial.print("\t");
-	Serial.print(dht22_hum); Serial.print("\t");
-	Serial.print(msg.bmp280_temp); Serial.print("\t");
-	Serial.print(msg.bmp280_pres); Serial.print("\t");
-	Serial.print(msg.voltage); Serial.print("\t");
+	Serial.print(cur_values.sensor.id); Serial.print("\t");
+	Serial.print(cur_values.sensor.ds1820_temp); Serial.print("\t");
+	Serial.print(cur_values.dht22_temp); Serial.print("\t");
+	Serial.print(cur_values.dht22_hum); Serial.print("\t");
+	Serial.print(cur_values.sensor.bmp280_temp); Serial.print("\t");
+	Serial.print(cur_values.sensor.bmp280_pres); Serial.print("\t");
+	Serial.print(cur_values.sensor.voltage); Serial.print("\t");
 	Serial.print(millis());  Serial.print("\t");  // msg.uptime
-	Serial.print(msg.send_err); Serial.print("\t");
+	Serial.print(cur_values.sensor.send_err); Serial.print("\t");
 	Serial.println(duplicate_count);
 #else
-	Serial.print("Recieved: id:          "); Serial.println(msg.id);
-	Serial.print("          ds1820_temp: "); Serial.println(msg.ds1820_temp);
-	Serial.print("          dht22_temp:  "); Serial.println(dht22_temp);
-	Serial.print("          dht22_hum:   "); Serial.println(dht22_hum);
-	Serial.print("          bmp280_temp: "); Serial.println(msg.bmp280_temp);
-	Serial.print("          bmp280_pres: "); Serial.println(msg.bmp280_pres);
-	Serial.print("          voltage:     "); Serial.println(msg.voltage);
+	Serial.print("Recieved: id:          "); Serial.println(cur_values.sensor.id);
+	Serial.print("          ds1820_temp: "); Serial.println(cur_values.sensor.ds1820_temp);
+	Serial.print("          dht22_temp:  "); Serial.println(cur_values.dht22_temp);
+	Serial.print("          dht22_hum:   "); Serial.println(cur_values.dht22_hum);
+	Serial.print("          bmp280_temp: "); Serial.println(cur_values.sensor.bmp280_temp);
+	Serial.print("          bmp280_pres: "); Serial.println(cur_values.sensor.bmp280_pres);
+	Serial.print("          voltage:     "); Serial.println(cur_values.sensor.voltage);
 	Serial.print("          uptime:      "); print_uptime(millis());
-	Serial.print("          send_err:    "); Serial.println(msg.send_err);
+	Serial.print("          send_err:    "); Serial.println(cur_values.sensor.send_err);
 	Serial.print("          duplicate:   "); Serial.println(duplicate_count);
 	Serial.println("=================================");
 #endif
@@ -129,6 +179,7 @@ void print_data_display(void)
 	{
 		unsigned long elapsed_time = conn_last_time == -1 ? -1 : millis() - conn_last_time;
 		get_data_dht(); // Обновляем показания с локального датчика
+		check_min_max_values(0);
 		oled128x64.clrScr();
 		if(elapsed_time == -1)
 		{
@@ -157,15 +208,15 @@ void print_data_display(void)
 			}
 		}
 
-		oled128x64.print("dht22:  ", OLED_L, 2);  oled128x64.print(dht22_temp,      OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
-		oled128x64.print("dht22:  ", OLED_L, 3);  oled128x64.print(dht22_hum,       OLED_N, 3, 2);  oled128x64.print(" %",     OLED_N, 3);
-		oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(msg.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
-		oled128x64.print("bmp280: ", OLED_L, 5);  oled128x64.print(msg.bmp280_pres, OLED_N, 5, 2);  oled128x64.print(" mmHg",  OLED_N, 5);
-		oled128x64.print("volt:   ", OLED_L, 6);  oled128x64.print(msg.voltage,     OLED_N, 6, 2);  oled128x64.print(" v",     OLED_N, 6);
+		oled128x64.print("dht22:  ", OLED_L, 2);  oled128x64.print(cur_values.dht22_temp,         OLED_N, 2, 2);  oled128x64.print(" \370C", OLED_N, 2);
+		oled128x64.print("dht22:  ", OLED_L, 3);  oled128x64.print(cur_values.dht22_hum,          OLED_N, 3, 2);  oled128x64.print(" %",     OLED_N, 3);
+		oled128x64.print("ds1820: ", OLED_L, 4);  oled128x64.print(cur_values.sensor.ds1820_temp, OLED_N, 4, 2);  oled128x64.print(" \370C", OLED_N, 4);
+		oled128x64.print("bmp280: ", OLED_L, 5);  oled128x64.print(cur_values.sensor.bmp280_pres, OLED_N, 5, 2);  oled128x64.print(" mmHg",  OLED_N, 5);
+		oled128x64.print("volt:   ", OLED_L, 6);  oled128x64.print(cur_values.sensor.voltage,     OLED_N, 6, 2);  oled128x64.print(" v",     OLED_N, 6);
 		oled128x64.print("id/err: ", OLED_L, 7);
-		oled128x64.print(msg.id,     OLED_N, 7, 10);
+		oled128x64.print(cur_values.sensor.id,     OLED_N, 7, 10);
 		oled128x64.print("/",        OLED_N, 7);
-		oled128x64.print(msg.send_err, OLED_N, 7, 10);
+		oled128x64.print(cur_values.sensor.send_err, OLED_N, 7, 10);
 	}
 	disp_last_time = millis();
 }
@@ -218,6 +269,7 @@ void setup()
 #if EXEL_OUTPUT
 	Serial.println("id\tds1820\tdht22\tdht22\tbmp280\tbmp280\tvolt\tuptime\terr\tduplicate");
 #endif
+	init_min_max_values();
 }
 
 void loop()
@@ -231,7 +283,9 @@ void loop()
 		if(last_msg_id < msg.id)
 		{
 			// Если это не дупликат, считываем показания dht и выводим в послед. порт
+			update_cur_data();
 			get_data_dht();
+			check_min_max_values(1);
 			print_data_port();
 			if (last_msg_id == 0)
 			{
